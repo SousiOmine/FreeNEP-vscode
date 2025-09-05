@@ -11,7 +11,7 @@ FreeNEP (Next Edit Prediction) VS Code 拡張
 - インライン提案表示: 予測位置に薄いプレビューを表示し、2段階 Tab 操作で適用。
 - アイドル検知: 入力停止から一定時間後に自動でモデルに問い合わせ。
 - OpenAI 互換 API: npm の `openai` パッケージを使用。Base URL と API キーは拡張のサイドバーで設定。
-- リクエストごとの JSON ログ: モデルへの入力/出力と採否を 1 リクエスト 1 ファイルで保存。
+- ログ保存: レスポンスに editable region が含まれる場合のみ、入力/出力と採否を 1 リクエスト 1 ファイルで保存。
 - 活動中表示: 推論実行中はアクティビティバーの NEP ビューにバッジと “Generating…” を表示。
 
 モデル入出力仕様（minoshiro-NEP-v1-sft 準拠）
@@ -50,7 +50,7 @@ FreeNEP (Next Edit Prediction) VS Code 拡張
 
 ログ（1 リクエスト 1 JSON）
 
-- 保存項目:
+- 保存項目（成功時のみファイル作成）:
   - `events`: モデルへ渡した直近編集履歴（markdown の diff）。
   - `input_context`: モデルへ渡した現在のファイル情報（パス/言語ID/カーソル/全文、`region` にはマーカー入り断片）。
   - `output_context`: モデルからの生出力（文字列全体）。
