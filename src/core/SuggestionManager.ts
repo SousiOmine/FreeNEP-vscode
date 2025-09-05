@@ -8,7 +8,7 @@ import { Suggestion } from '../types';
 
 export class SuggestionManager {
   private timer: NodeJS.Timeout | null = null;
-  private readonly history: { uri: vscode.Uri; diffMarkdown: string; ts: number }[] = [];
+  private readonly history: { uri: vscode.Uri; content: string; ts: number }[] = [];
   private lastContentByDoc = new Map<string, string>();
   private suggestion: Suggestion | null = null;
   private stage: 'none' | 'jumped' = 'none';
@@ -57,8 +57,7 @@ export class SuggestionManager {
     const curr = e.document.getText();
     this.lastContentByDoc.set(key, curr);
 
-    const md = toDiffMarkdown(prev, curr);
-    this.history.push({ uri: e.document.uri, diffMarkdown: md, ts: Date.now() });
+    this.history.push({ uri: e.document.uri, content: curr, ts: Date.now() });
     const limit = vscode.workspace.getConfiguration().get<number>('minoshiro.editHistoryLimit') ?? 10;
     while (this.history.length > limit) this.history.shift();
 
@@ -86,7 +85,12 @@ export class SuggestionManager {
       return;
     }
 
-    const eventsMd = this.history.map(h => `- ${new Date(h.ts).toISOString()}\n${h.diffMarkdown}`).join('\n');
+    // 履歴から最初のコンテンツを取得
+    const initialContent = this.history.length > 0 ? this.history[0].content : '';
+    // 現在のコンテンツを取得
+    const currentContent = doc.getText();
+    // 最初と現在のコンテンツから一つの差分を生成
+    const eventsMd = initialContent !== currentContent ? toDiffMarkdown(initialContent, currentContent) : '';
     const selection = editor.selection.active;
     const fullText = doc.getText();
     const cursorOffset = doc.offsetAt(selection);
