@@ -13,7 +13,7 @@ type Suggestion = {
 
 type LogRecord = {
   events: string; // markdown diff of recent user edits
-  input_context: any; // JSON object we sent to model
+  input_context: string; // only the region string we sent to model
   output_context: any; // raw model output
   eval: 'accepted' | 'rejected' | 'pending';
 };
@@ -227,20 +227,14 @@ class SuggestionManager {
     const regionEndMarker = '<|editable_region_end|>';
     const regionInput = `${regionStartMarker}\n${before}${cursorMarker}${after}\n${regionEndMarker}`;
 
-    const inputContext = {
-      filePath: doc.uri.fsPath,
-      languageId: doc.languageId,
-      cursor: { line: selection.line, character: selection.character },
-      content: fullText,
-      region: regionInput
-    };
+    // For logging, we only keep the region string
 
     const client = new OpenAI({ apiKey, baseURL });
     const systemPrompt = `You are a code completion assistant. Your job is to rewrite the excerpt provided by the user, analyzing their edits and suggesting appropriate edits within the excerpt, taking into account the cursor's position.\nThe region where you can suggest the next edit is between <|editable_region_start|> and <|editable_region_end|>. Please predict the next edit between these tags and write the code that will fit within that region after the edits are applied.`;
 
     const userPrompt = `### User Edits:\n${eventsMd}\n\n### Currently User Code:\n${regionInput}`;
 
-    const logPath = await this.prepareLog({ events: eventsMd, input_context: inputContext, output_context: null, eval: 'pending' });
+    const logPath = await this.prepareLog({ events: eventsMd, input_context: regionInput, output_context: null, eval: 'pending' });
 
     this.badge.setBusy(true);
     try {
