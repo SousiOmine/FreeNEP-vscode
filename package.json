@@ -1,0 +1,116 @@
+{
+  "name": "freeneps-vscode",
+  "displayName": "FreeNEP (Next Edit Prediction)",
+  "description": "Inline next edit prediction using OpenAI-compatible API (minoshiro-NEP).",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "minoshiro.showSettings",
+        "title": "NEP: Open Settings"
+      },
+      {
+        "command": "minoshiro.acceptOrJump",
+        "title": "NEP: Accept or Jump"
+      },
+      {
+        "command": "minoshiro.dismiss",
+        "title": "NEP: Dismiss Suggestion"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "minoshiro",
+          "title": "NEP",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "minoshiro": [
+        {
+          "type": "webview",
+          "id": "minoshiro.settings",
+          "name": "Settings"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "FreeNEP",
+      "properties": {
+        "minoshiro.apiBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "OpenAI-compatible Base URL (e.g., https://api.openai.com/v1)",
+          "scope": "application"
+        },
+        "minoshiro.model": {
+          "type": "string",
+          "default": "minoshiro-NEP-v1-sft",
+          "description": "Model name for Chat Completions",
+          "scope": "application"
+        },
+        "minoshiro.editHistoryLimit": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 200,
+          "description": "How many recent edit diffs to send to the model",
+          "scope": "application"
+        },
+        "minoshiro.logDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Directory to store per-request JSON logs (leave blank for extension storage)",
+          "scope": "application"
+        },
+        "minoshiro.idleDelayMs": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 300,
+          "maximum": 10000,
+          "description": "Inactivity delay before proposing next edit",
+          "scope": "application"
+        }
+      }
+    },
+    "keybindings": [
+      {
+        "key": "tab",
+        "command": "minoshiro.acceptOrJump",
+        "when": "minoshiro.hasSuggestion"
+      },
+      {
+        "key": "escape",
+        "command": "minoshiro.dismiss",
+        "when": "minoshiro.hasSuggestion"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/diff": "^7.0.2",
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "diff": "^5.2.0",
+    "openai": "^4.52.2"
+  }
+}
