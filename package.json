@@ -82,6 +82,27 @@
           "maximum": 10000,
           "description": "Inactivity delay before proposing next edit",
           "scope": "application"
+        },
+        "minoshiro.autoShowPreview": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically show hover preview box for suggestions",
+          "scope": "application"
+        },
+        "minoshiro.autoShowPreviewDelayMs": {
+          "type": "number",
+          "default": 350,
+          "minimum": 0,
+          "maximum": 2000,
+          "description": "Delay before auto-opening hover to avoid keypress conflicts",
+          "scope": "application"
+        },
+        "minoshiro.previewHoverMode": {
+          "type": "string",
+          "default": "split",
+          "enum": ["split", "diff"],
+          "description": "How to show preview in hover: 'split' shows Before/After blocks, 'diff' shows unified diff + After",
+          "scope": "application"
         }
       }
     },
@@ -89,12 +110,12 @@
       {
         "key": "tab",
         "command": "minoshiro.acceptOrJump",
-        "when": "minoshiro.hasSuggestion"
+        "when": "minoshiro.hasSuggestion && editorTextFocus"
       },
       {
         "key": "escape",
         "command": "minoshiro.dismiss",
-        "when": "minoshiro.hasSuggestion"
+        "when": "minoshiro.hasSuggestion && editorTextFocus"
       }
     ]
   },

@@ -21,6 +21,9 @@ export class SettingsProvider implements vscode.WebviewViewProvider {
       const limit = cfg.get<number>('minoshiro.editHistoryLimit') ?? 10;
       const logDir = cfg.get<string>('minoshiro.logDirectory') ?? '';
       const idleDelayMs = cfg.get<number>('minoshiro.idleDelayMs') ?? 1000;
+      const autoShow = cfg.get<boolean>('minoshiro.autoShowPreview') ?? true;
+      const autoDelay = cfg.get<number>('minoshiro.autoShowPreviewDelayMs') ?? 350;
+      const hoverMode = (cfg.get<string>('minoshiro.previewHoverMode') ?? 'split');
       const apiKey = await this.context.secrets.get('minoshiro.apiKey') || '';
       webviewView.webview.html = `<!DOCTYPE html>
         <html lang="en"><head>
@@ -61,6 +64,23 @@ export class SettingsProvider implements vscode.WebviewViewProvider {
             <label>Log Directory</label>
             <input id="logDir" value="${logDir}" placeholder="Leave empty to use extension storage" />
           </div>
+          <hr />
+          <div class="row">
+            <label>Hover Auto Open</label>
+            <input id="autoShow" type="checkbox" ${autoShow ? 'checked' : ''} />
+            <div class="note">Automatically open the preview hover</div>
+          </div>
+          <div class="row">
+            <label>Hover Auto Open Delay (ms)</label>
+            <input id="autoDelay" type="number" value="${autoDelay}" min="0" max="2000" />
+          </div>
+          <div class="row">
+            <label>Hover Mode</label>
+            <select id="hoverMode">
+              <option value="split" ${hoverMode === 'split' ? 'selected' : ''}>Before / After</option>
+              <option value="diff" ${hoverMode === 'diff' ? 'selected' : ''}>Unified diff + After</option>
+            </select>
+          </div>
           <button id="save">Save</button>
           <script>
             const vscode = acquireVsCodeApi();
@@ -73,6 +93,9 @@ export class SettingsProvider implements vscode.WebviewViewProvider {
                 limit: Number((document.getElementById('limit')).value),
                 idleDelayMs: Number((document.getElementById('idleDelayMs')).value),
                 logDir: (document.getElementById('logDir')).value.trim(),
+                autoShow: (document.getElementById('autoShow')).checked,
+                autoDelay: Number((document.getElementById('autoDelay')).value),
+                hoverMode: (document.getElementById('hoverMode')).value,
               });
             });
           </script>
@@ -87,6 +110,11 @@ export class SettingsProvider implements vscode.WebviewViewProvider {
         await cfg.update('minoshiro.editHistoryLimit', msg.limit, vscode.ConfigurationTarget.Global);
         await cfg.update('minoshiro.idleDelayMs', msg.idleDelayMs, vscode.ConfigurationTarget.Global);
         await cfg.update('minoshiro.logDirectory', msg.logDir, vscode.ConfigurationTarget.Global);
+        await cfg.update('minoshiro.autoShowPreview', !!msg.autoShow, vscode.ConfigurationTarget.Global);
+        await cfg.update('minoshiro.autoShowPreviewDelayMs', msg.autoDelay, vscode.ConfigurationTarget.Global);
+        if (msg.hoverMode === 'split' || msg.hoverMode === 'diff') {
+          await cfg.update('minoshiro.previewHoverMode', msg.hoverMode, vscode.ConfigurationTarget.Global);
+        }
         if (typeof msg.apiKey === 'string') {
           await this.context.secrets.store('minoshiro.apiKey', msg.apiKey);
         }
@@ -97,4 +125,3 @@ export class SettingsProvider implements vscode.WebviewViewProvider {
     updateHtml();
   }
 }
-

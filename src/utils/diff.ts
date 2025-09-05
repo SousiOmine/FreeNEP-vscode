@@ -24,7 +24,8 @@ export function computePrimaryEdit(before: string, after: string): { startOffset
   for (const part of parts) {
     if (!part.added && !part.removed) {
       if (startOffset === null) {
-        offsetBefore += part.count ?? part.value.length;
+        // Use character length, not 'count' (word count) to maintain byte-accurate offsets
+        offsetBefore += part.value.length;
       } else if (startOffset !== null && endOffset === null) {
         endOffset = offsetBefore;
         break;
@@ -33,7 +34,7 @@ export function computePrimaryEdit(before: string, after: string): { startOffset
     }
     if (startOffset === null) startOffset = offsetBefore;
     if (part.removed) {
-      offsetBefore += part.count ?? part.value.length;
+      offsetBefore += part.value.length;
     }
     if (part.added) {
       insertText += part.value;
@@ -43,4 +44,3 @@ export function computePrimaryEdit(before: string, after: string): { startOffset
   if (endOffset === null) endOffset = offsetBefore;
   return { startOffset, endOffset, insertText };
 }
-

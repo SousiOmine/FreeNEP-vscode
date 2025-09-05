@@ -8,11 +8,17 @@ FreeNEP (Next Edit Prediction) VS Code 拡張
 
 特徴
 
-- インライン提案表示: 予測位置に薄いプレビューを表示し、2段階 Tab 操作で適用。
+- ホバープレビュー: 予測された変更はホバーで詳細表示。Tab は 2 段階で適用。
 - アイドル検知: 入力停止から一定時間後に自動でモデルに問い合わせ。
 - OpenAI 互換 API: npm の `openai` パッケージを使用。Base URL と API キーは拡張のサイドバーで設定。
 - ログ保存: レスポンスに editable region が含まれる場合のみ、入力/出力と採否を 1 リクエスト 1 ファイルで保存。
 - 活動中表示: 推論実行中はアクティビティバーの NEP ビューにバッジと “Generating…” を表示。
+
+プレビュー表示のモード
+
+- 変更のプレビューはホバーで表示します。既定では「Before / After」を別々のコードブロックで表示します（`minoshiro.previewHoverMode: "split"`）。
+- 統合 diff で見たい場合は、設定で `minoshiro.previewHoverMode` を `"diff"` にすると、`Changes (diff)` と `After` を表示します。
+- 自動でホバーを開くには `minoshiro.autoShowPreview` を有効化し、`minoshiro.autoShowPreviewDelayMs` で遅延を調整できます。
 
 モデル入出力仕様（minoshiro-NEP-v1-sft 準拠）
 
@@ -38,11 +44,14 @@ FreeNEP (Next Edit Prediction) VS Code 拡張
 - `minoshiro.editHistoryLimit`: モデルに送る直近の編集 diff 件数（既定 10）。
 - `minoshiro.idleDelayMs`: 入力停止から問い合わせまでの遅延（既定 1000ms）。
 - `minoshiro.logDirectory`: ログ保存先ディレクトリ（未指定時は拡張のグローバル領域）。
+- `minoshiro.autoShowPreview`: 提案の詳細ホバーを自動表示（既定: 有効）。
+- `minoshiro.autoShowPreviewDelayMs`: ホバー自動表示の遅延。
+- `minoshiro.previewHoverMode`: `split`（Before/After を個別表示）/ `diff`（統合 diff 表示）。
 
 使い方
 
 - 左のアクティビティバーの `NEP` を開き、`Settings` で Base URL と API キー、モデル名などを設定。
-- コードを編集して手を止めると、モデルへの問い合わせが走り、予測がインライン表示されます。
+- コードを編集して手を止めると、モデルへの問い合わせが走り、ホバーでプレビューが表示されます（自動表示を無効にしている場合は、対象位置にマウスを置くかコマンド `Editor: Show Hover` を実行）。
 - Tab: 提案が表示中のみ有効。
   - 1回目: 予測開始位置へジャンプ。
   - 2回目: その変更（挿入/置換）を適用。

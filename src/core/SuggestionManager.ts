@@ -12,24 +12,40 @@ export class SuggestionManager {
   private lastContentByDoc = new Map<string, string>();
   private suggestion: Suggestion | null = null;
   private stage: 'none' | 'jumped' = 'none';
-  private decoration?: vscode.TextEditorDecorationType;
-  private rangeDecoration?: vscode.TextEditorDecorationType;
+  // Hover support state
+  private lastHover?: vscode.MarkdownString;
   private statusItem: vscode.StatusBarItem;
   private currentAbort?: AbortController;
   private requestSeq = 0;
   private logger: LoggerService;
+  private hoverAnchorRange?: vscode.Range;
+  private hoverTimer?: NodeJS.Timeout;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly badge: ActivityBadgeController) {
     this.statusItem = vscode.window.createStatusBarItem('minoshiro', vscode.StatusBarAlignment.Right, 100);
     this.statusItem.name = 'NEP';
     this.statusItem.tooltip = 'Next Edit Prediction';
     this.logger = new LoggerService(context);
+
+    // Provide hover content within the current suggestion range so that
+    // 'editor.action.showHover' can open it and mouse hover also works.
+    const provider = vscode.languages.registerHoverProvider(
+      ['*', { scheme: 'file' }, { scheme: 'untitled' }],
+      {
+        provideHover: (doc, position) => {
+          if (!this.suggestion || !this.hoverAnchorRange) return;
+          if (doc.uri.toString() !== this.suggestion.uri.toString()) return;
+          if (!this.hoverAnchorRange.contains(position)) return;
+          if (!this.lastHover) return;
+          return new vscode.Hover(this.lastHover);
+        }
+      }
+    );
+    context.subscriptions.push(provider);
   }
 
   dispose() {
     this.statusItem.dispose();
-    this.decoration?.dispose();
-    this.rangeDecoration?.dispose();
   }
 
   onChange(e: vscode.TextDocumentChangeEvent) {
@@ -117,14 +133,25 @@ export class SuggestionManager {
 
       const inputRegionContent = `${before}${CURSOR_MARKER}${after}`;
       const outputRegionContent = regionOut;
+
+      // If the only difference between input and output is the cursor tag,
+      // treat as no-op and do not propose an edit.
+      const normalizeCursor = (s: string) => s.split(CURSOR_MARKER).join('');
+      if (normalizeCursor(inputRegionContent) === normalizeCursor(outputRegionContent)) {
+        setStatus('NEP: No actionable changes');
+        return;
+      }
       const primary = computePrimaryEdit(inputRegionContent, outputRegionContent);
       if (!primary) {
         setStatus('NEP: No differences');
         return;
       }
 
-      const startPos = doc.positionAt(primary.startOffset);
-      const endPos = doc.positionAt(primary.endOffset);
+      // Map offsets from inputRegionContent (which includes CURSOR_MARKER) to document offsets
+      const markerIndex = inputRegionContent.indexOf(CURSOR_MARKER);
+      const adjust = (o: number) => (markerIndex >= 0 && o > markerIndex) ? o - CURSOR_MARKER.length : o;
+      const startPos = doc.positionAt(adjust(primary.startOffset));
+      const endPos = doc.positionAt(adjust(primary.endOffset));
       const target = startPos;
       const range = primary.startOffset === primary.endOffset ? undefined : new vscode.Range(startPos, endPos);
       const preview = primary.insertText.length > 40 ? primary.insertText.slice(0, 40) + '…' : primary.insertText;
@@ -132,7 +159,7 @@ export class SuggestionManager {
       this.suggestion = { uri: doc.uri, target, range, insertText: primary.insertText, preview, logUri };
       await vscode.commands.executeCommand('setContext', 'minoshiro.hasSuggestion', true);
       this.stage = 'none';
-      this.showDecoration(editor, target, preview, range);
+      this.showHoverPreview(editor, range, primary.insertText, target);
       setStatus('NEP: Suggestion ready (Tab to jump)');
     } catch (err: any) {
       if (this.isAbortError(err)) {
@@ -159,25 +186,43 @@ export class SuggestionManager {
     );
   }
 
-  private showDecoration(editor: vscode.TextEditor, at: vscode.Position, text: string, replaceRange?: vscode.Range) {
-    this.decoration?.dispose();
-    this.rangeDecoration?.dispose();
-    this.decoration = vscode.window.createTextEditorDecorationType({
-      after: {
-        contentText: ` ⇢ ${text}`,
-        color: new vscode.ThemeColor('editorCodeLens.foreground'),
-        margin: '0 0 0 8px',
-        textDecoration: 'background-color: rgba(76, 175, 80, 0.20); border-radius: 2px;'
-      }
-    });
-    editor.setDecorations(this.decoration, [{ range: new vscode.Range(at, at) }]);
+  private showHoverPreview(
+    editor: vscode.TextEditor,
+    replaceRange: vscode.Range | undefined,
+    newText: string,
+    at: vscode.Position
+  ) {
+    const doc = editor.document;
+    const oldText = replaceRange ? doc.getText(replaceRange) : '';
+    this.lastHover = this.buildHoverMarkdown(doc.languageId, oldText, newText);
 
+    // Define the region where the hover should be available
     if (replaceRange) {
-      this.rangeDecoration = vscode.window.createTextEditorDecorationType({
-        backgroundColor: 'rgba(76, 175, 80, 0.25)',
-        borderRadius: '2px'
-      });
-      editor.setDecorations(this.rangeDecoration, [{ range: replaceRange }]);
+      this.hoverAnchorRange = replaceRange;
+    } else {
+      const lineRange = doc.lineAt(at.line).range;
+      this.hoverAnchorRange = new vscode.Range(lineRange.start, lineRange.end);
+    }
+
+    // Optionally auto-open hover preview
+    const cfg = vscode.workspace.getConfiguration();
+    const auto = cfg.get<boolean>('minoshiro.autoShowPreview') ?? true;
+    const delay = cfg.get<number>('minoshiro.autoShowPreviewDelayMs') ?? 350;
+    if (auto && this.hoverAnchorRange) {
+      const originalSel = editor.selection;
+      const pos = this.hoverAnchorRange.start;
+      if (this.hoverTimer) { clearTimeout(this.hoverTimer); }
+      this.hoverTimer = setTimeout(async () => {
+        if (this.stage !== 'none') return; // user already interacting
+        try {
+          editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+          editor.selection = new vscode.Selection(pos, pos);
+          await vscode.commands.executeCommand('editor.action.showHover');
+        } finally {
+          // Give the hover a short moment to stabilize before restoring selection
+          setTimeout(() => { try { editor.selection = originalSel; } catch {} }, 250);
+        }
+      }, delay);
     }
   }
 
@@ -187,12 +232,15 @@ export class SuggestionManager {
     if (editor.document.uri.toString() !== this.suggestion.uri.toString()) return;
 
     if (this.stage === 'none') {
+      if (this.hoverTimer) { clearTimeout(this.hoverTimer); this.hoverTimer = undefined; }
       const pos = this.suggestion.target;
       editor.selection = new vscode.Selection(pos, pos);
       editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
       this.stage = 'jumped';
       this.statusItem.text = 'NEP: Tab to apply';
       this.statusItem.show();
+      // Keep the preview hover visible after jumping
+      await this.showHoverNow(editor, pos);
       return;
     }
 
@@ -222,8 +270,62 @@ export class SuggestionManager {
     this.suggestion = null;
     this.stage = 'none';
     vscode.commands.executeCommand('setContext', 'minoshiro.hasSuggestion', false);
-    this.decoration?.dispose();
-    this.rangeDecoration?.dispose();
+    this.hoverAnchorRange = undefined;
+    this.lastHover = undefined;
+    if (this.hoverTimer) { clearTimeout(this.hoverTimer); this.hoverTimer = undefined; }
     this.statusItem.hide();
+  }
+
+  private buildHoverMarkdown(languageId: string, oldText: string, newText: string): vscode.MarkdownString {
+    const cfg = vscode.workspace.getConfiguration();
+    const mode = (cfg.get<string>('minoshiro.previewHoverMode') || 'split').toLowerCase();
+
+    const hover = new vscode.MarkdownString();
+    hover.isTrusted = true; // enable command links
+
+    if (mode === 'diff') {
+      // Unified diff plus after block
+      let diffBlock = '';
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const d = require('diff');
+        const parts: Array<{ added?: boolean; removed?: boolean; value: string }> = d.diffLines(oldText, newText);
+        const lines: string[] = [];
+        for (const p of parts) {
+          const raw = p.value.split(/\r?\n/);
+          const content = raw[raw.length - 1] === '' ? raw.slice(0, -1) : raw;
+          if (p.added) for (const l of content) lines.push(`+ ${l}`);
+          else if (p.removed) for (const l of content) lines.push(`- ${l}`);
+        }
+        diffBlock = '```diff\n' + (lines.join('\n') || '+ (no visible changes)') + '\n```\n';
+      } catch {
+        diffBlock = '```diff\n+ ' + (newText.split(/\r?\n/)[0] || '(suggestion)') + '\n```\n';
+      }
+      hover.appendMarkdown('Changes:\n');
+      hover.appendMarkdown(diffBlock);
+      hover.appendMarkdown('\nAfter:\n');
+      hover.appendCodeblock(newText || '(empty)', languageId || 'plaintext');
+    } else {
+      // Split Before/After blocks for clarity
+      hover.appendMarkdown('Before:\n');
+      hover.appendCodeblock(oldText || '(empty)', languageId || 'plaintext');
+      hover.appendMarkdown('\nAfter:\n');
+      hover.appendCodeblock(newText || '(empty)', languageId || 'plaintext');
+    }
+
+    const acceptCmd = `[Accept](command:minoshiro.acceptOrJump)`;
+    const dismissCmd = `[Dismiss](command:minoshiro.dismiss)`;
+    hover.appendMarkdown(`\n${acceptCmd} · ${dismissCmd}`);
+    return hover;
+  }
+
+  private async showHoverNow(editor: vscode.TextEditor, pos: vscode.Position) {
+    try {
+      editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+      editor.selection = new vscode.Selection(pos, pos);
+      // slight delay improves reliability on some platforms
+      await new Promise(r => setTimeout(r, 50));
+      await vscode.commands.executeCommand('editor.action.showHover');
+    } catch {}
   }
 }
